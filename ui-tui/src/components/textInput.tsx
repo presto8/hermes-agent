@@ -1529,7 +1529,10 @@ export function TextInput({
       const actionKillToEnd = (mod && inp === 'k') || isMacActionFallback(k, inp, 'k')
       const actionDeleteWord = (mod && inp === 'w') || isMacActionFallback(k, inp, 'w')
       const range = selRange()
-      const delFwd = k.delete || fwdDel.current
+      // Literal Ctrl+D on macOS is readline delete-char. With an empty draft
+      // the app-level handler has already taken it as EOF/exit; with a draft
+      // it lands here and must delete forward instead of being swallowed.
+      const delFwd = k.delete || fwdDel.current || isMacActionFallback(k, inp, 'd')
 
       const isPrintableInput =
         !event.isControlChord &&
