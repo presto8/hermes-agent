@@ -250,6 +250,7 @@ const TranscriptPane = memo(function TranscriptPane({
               selected={!nativeMode && row.index === rewindFocusIdx}
               t={ui.theme}
               timestamps={ui.timestamps}
+              userShade={ui.userMessageShade}
             />
           )}
 
