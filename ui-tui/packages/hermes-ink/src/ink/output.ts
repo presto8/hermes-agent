@@ -147,6 +147,8 @@ type ShiftOperation = {
   top: number
   bottom: number
   n: number
+  x?: number
+  width?: number
 }
 
 type ClearOperation = {
@@ -215,12 +217,14 @@ export default class Output {
   }
 
   /**
-   * Shift full-width rows within [top, bottom] by n. n > 0 = up. Mirrors
-   * what DECSTBM + SU/SD does to the terminal. Paired with blit() to reuse
+   * Shift rows within [top, bottom] by n. n > 0 = up. Mirrors what
+   * DECSTBM + SU/SD does to the terminal. Paired with blit() to reuse
    * prevScreen content during pure scroll, avoiding full child re-render.
+   * `x`/`width` keep the shift inside a column band (a scroll box beside a
+   * side panel) so cells outside it don't move.
    */
-  shift(top: number, bottom: number, n: number): void {
-    this.operations.push({ type: 'shift', top, bottom, n })
+  shift(top: number, bottom: number, n: number, x?: number, width?: number): void {
+    this.operations.push({ type: 'shift', top, bottom, n, x, width })
   }
 
   /**
@@ -422,7 +426,7 @@ export default class Output {
         }
 
         case 'shift': {
-          shiftRows(screen, operation.top, operation.bottom, operation.n)
+          shiftRows(screen, operation.top, operation.bottom, operation.n, operation.x, operation.width)
 
           continue
         }
