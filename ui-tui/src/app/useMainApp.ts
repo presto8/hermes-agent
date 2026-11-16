@@ -63,6 +63,8 @@ import { $goodVibesTick } from './petFlashStore.js'
 import { applyProcessSnapshot, type ProcessEntry } from './processRoster.js'
 import { scrollWithSelectionBy } from './scroll.js'
 import { respondToServerRequest } from './serverRequestStore.js'
+import { sessionTabsRailWidth } from './sessionTabsModel.js'
+import { refreshSessionTabs } from './sessionTabsStore.js'
 import { mutateCanonicalSession } from './slash/canonicalSessionControls.js'
 import { setSlashCatalog, useSlashCatalog } from './slashCatalog.js'
 import { captureDestination, isCurrentDestination, type SubmissionDestination } from './submissionDestination.js'
@@ -491,9 +493,12 @@ export function useMainApp(gw: GatewayClient) {
   // mixed markdown — we deliberately remount every row so yoga re-measures
   // off live geometry. Cost: per-row local state (e.g. systemOpen toggles)
   // resets on resize; small UX hit for a hard correctness win.
+  // The session-tab rail takes its columns from the transcript, so rows wrap to what's left.
+  const transcriptCols = ui.sessionTabs ? cols - sessionTabsRailWidth(cols) : cols
+
   const virtualRows = useMemo<TranscriptRow[]>(
-    () => historyItems.map((msg, index) => ({ index, key: `${messageId(msg)}:c${cols}`, msg })),
-    [cols, historyItems, messageId]
+    () => historyItems.map((msg, index) => ({ index, key: `${messageId(msg)}:c${transcriptCols}`, msg })),
+    [transcriptCols, historyItems, messageId]
   )
 
   const detailsLayoutKey = useMemo(() => {
@@ -508,7 +513,7 @@ export function useMainApp(gw: GatewayClient) {
     ui
   )
 
-  const heightCacheKey = heightCacheBucket(ui, cols, detailsLayoutKey)
+  const heightCacheKey = heightCacheBucket(ui, transcriptCols, detailsLayoutKey)
 
   // Build a render-local snapshot. Registering/pruning the shared cache is a
   // post-commit transition below, so an abandoned concurrent render cannot
@@ -532,7 +537,7 @@ export function useMainApp(gw: GatewayClient) {
 
   const estimateRowHeight = useCallback(
     (index: number) =>
-      estimatedMsgHeight(virtualRows[index]!.msg, cols, {
+      estimatedMsgHeight(virtualRows[index]!.msg, transcriptCols, {
         compact: ui.compact,
         details: detailsVisible,
         inlineImages: ui.inlineImages,
@@ -551,7 +556,7 @@ export function useMainApp(gw: GatewayClient) {
         withSeparator: virtualRows[index]!.msg.role === 'user' && firstUserIdx >= 0 && index > firstUserIdx
       }),
     [
-      cols,
+      transcriptCols,
       detailsVisible,
       firstUserIdx,
       historyThinkingExpanded,
@@ -574,7 +579,7 @@ export function useMainApp(gw: GatewayClient) {
     [activeHeightCache, virtualRows]
   )
 
-  const virtualHistory = useVirtualHistory(scrollRef, virtualRows, cols, {
+  const virtualHistory = useVirtualHistory(scrollRef, virtualRows, transcriptCols, {
     estimateHeight: estimateRowHeight,
     generation: historyGeneration,
     initialHeights: activeHeightCache,
@@ -759,6 +764,10 @@ export function useMainApp(gw: GatewayClient) {
           if (!stopped && result?.sessions) {
             noteLiveSessions(gw, result.sessions, sys, () => !stopped)
             applyLiveSessionRoster(result.sessions)
+
+            if (getUiState().sessionTabs) {
+              void refreshSessionTabs(gw, result.sessions, getUiState().sid, () => !stopped)
+            }
           }
         })
         .catch(() => {})
@@ -1005,6 +1014,7 @@ export function useMainApp(gw: GatewayClient) {
 
   const { pagerPageSize } = useInputHandlers({
     actions: {
+      activateLiveSession: session.activateLiveSession,
       appendMessage,
       cancelClarify,
       countPrompts: () => historyItemsRef.current.filter(msg => msg.role === 'user' && !msg.kind).length,

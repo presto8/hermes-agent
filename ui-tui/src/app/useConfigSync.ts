@@ -362,6 +362,7 @@ export const applyDisplay = (
     pasteCollapseLines: _pasteCollapseLinesFromConfig(cfg),
     pasteCollapseChars: _pasteCollapseCharsFromConfig(cfg),
     sections: resolveSections(d.sections),
+    sessionTabs: !!d.tui_session_tabs,
     showReasoning: !!d.show_reasoning,
     statusBar: normalizeStatusBar(d.tui_statusbar),
     statusBarFields: normalizeStatusBarFields(d.status_bar?.fields),

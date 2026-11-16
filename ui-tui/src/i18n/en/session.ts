@@ -97,6 +97,14 @@ export const sessionEn = {
       // {0}=subcommand {1}=exit code
       exitedWithCode: (subcommand: string, code: string) => `hermes ${subcommand} exited with code ${code}`,
       stillNoProvider: 'still no provider configured'
+    },
+    // Vertical session-tab rail (display.tui_session_tabs).
+    tabs: {
+      title: 'Sessions',
+      live: (count: number) => `${count} live`,
+      waiting: (count: number) => `${count} waiting`,
+      newSession: '+ new session',
+      untitled: 'untitled'
     }
   }
 }

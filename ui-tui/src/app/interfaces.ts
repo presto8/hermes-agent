@@ -372,6 +372,8 @@ export interface UiState {
   pasteCollapseChars: number
 
   sections: SectionVisibility
+  // `display.tui_session_tabs`: the vertical session-tab rail beside the transcript.
+  sessionTabs: boolean
   sessionTitle: string
   showReasoning: boolean
   indicatorStyle: IndicatorStyle
@@ -497,6 +499,8 @@ export interface UseComposerStateResult {
 }
 
 export interface InputHandlerActions {
+  /** Switch the view to live session *id* (the tab rail's keys). */
+  activateLiveSession: (id: string) => void
   appendMessage: (msg: Msg) => void
   cancelClarify: () => void
   /** User prompts in the transcript on screen (gates the backtrack prime hint). */

@@ -11,6 +11,7 @@ import { $inputSelection } from '../app/inputSelectionStore.js'
 import type { AppLayoutProps } from '../app/interfaces.js'
 import { $isBlocked, $overlayState, patchOverlayState } from '../app/overlayStore.js'
 import { $petBox } from '../app/petFlashStore.js'
+import { sessionTabsRailWidth } from '../app/sessionTabsModel.js'
 import { $uiState } from '../app/uiStore.js'
 import { usePet } from '../app/usePet.js'
 import { $voicePartial } from '../app/voicePartialStore.js'
@@ -44,6 +45,7 @@ import { MessageLine } from './messageLine.js'
 import { PasteHint } from './pasteSections.js'
 import { QueuedMessages } from './queuedMessages.js'
 import { RewindFocusScroller, useBacktrackHint, useRewindFocusIndex } from './rewindFocus.js'
+import { SessionTabsRail } from './sessionTabsRail.js'
 import { LiveTodoPanel, StreamingAssistant } from './streamingAssistant.js'
 import { type InputCursorSnapshot, TextInput, type TextInputMouseApi } from './textInput.js'
 
@@ -645,6 +647,12 @@ export const AppLayout = memo(function AppLayout({
 }: AppLayoutProps) {
   const overlay = useStore($overlayState)
   const ui = useStore($uiState)
+  const tabsWidth = ui.sessionTabs && !overlay.agents && !overlay.journey ? sessionTabsRailWidth(composer.cols) : 0
+
+  const transcriptComposer = useMemo(
+    () => (tabsWidth ? { ...composer, cols: composer.cols - tabsWidth } : composer),
+    [composer, tabsWidth]
+  )
 
   const cursorSnapshotRef = useRef<InputCursorSnapshot | null>(null)
   useEffect(() => {
@@ -661,6 +669,15 @@ export const AppLayout = memo(function AppLayout({
     <Shell {...shellProps}>
       <Box flexDirection="column" flexGrow={1} position={NATIVE_MODE ? undefined : 'relative'}>
         <Box flexDirection="row" flexGrow={1}>
+          {tabsWidth ? (
+            <SessionTabsRail
+              currentSessionId={ui.sid}
+              onNew={actions.newLiveSession}
+              onSelect={id => id !== ui.sid && actions.activateLiveSession(id)}
+              t={ui.theme}
+              width={tabsWidth}
+            />
+          ) : null}
           {!overlay.agents && !overlay.journey && <AmbientRail side="left" />}
           {overlay.agents ? (
             <PerfPane id="agents">
@@ -674,7 +691,7 @@ export const AppLayout = memo(function AppLayout({
             <PerfPane id="transcript">
               <TranscriptPane
                 actions={actions}
-                composer={composer}
+                composer={transcriptComposer}
                 nativeMode={NATIVE_MODE}
                 progress={progress}
                 transcript={transcript}

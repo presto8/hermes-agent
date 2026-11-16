@@ -3,6 +3,8 @@ import * as Ink from '@hermes/ink'
 import { type MutableRefObject, useEffect, useMemo, useRef, useState } from 'react'
 
 import { setInputSelection, takeInputCursor } from '../app/inputSelectionStore.js'
+import { sessionTabKeyAction } from '../app/sessionTabsModel.js'
+import { $uiState } from '../app/uiStore.js'
 import { highlightMask, highlightsStable } from '../domain/composerHighlights.js'
 import { readClipboardText, writeClipboardText } from '../lib/clipboard.js'
 import { cursorLayout, offsetFromPosition } from '../lib/inputMetrics.js'
@@ -1943,7 +1945,8 @@ export const shouldPassThroughToGlobalHandler = (
   key.pageUp ||
   key.pageDown ||
   key.escape ||
-  isVoiceToggleKey(key, input, voiceRecordKey)
+  isVoiceToggleKey(key, input, voiceRecordKey) ||
+  ($uiState.get().sessionTabs && sessionTabKeyAction(input, key) !== null)
 
 export interface TextInputMouseApi {
   dragAt: (row: number, col: number) => void
