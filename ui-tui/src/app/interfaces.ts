@@ -501,6 +501,8 @@ export interface UseComposerStateResult {
 export interface InputHandlerActions {
   /** Switch the view to live session *id* (the tab rail's keys). */
   activateLiveSession: (id: string) => void
+  /** Reopen stored session *id* (a tab whose session closed). */
+  resumeById: (id: string) => void
   appendMessage: (msg: Msg) => void
   cancelClarify: () => void
   /** User prompts in the transcript on screen (gates the backtrack prime hint). */

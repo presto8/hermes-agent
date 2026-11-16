@@ -11,7 +11,7 @@ import {
   sessionTabGlyph,
   sessionTabWindow
 } from '../app/sessionTabsModel.js'
-import { $sessionTabRows, $sessionTabUnread } from '../app/sessionTabsStore.js'
+import { $sessionTabRows, $sessionTabs, $sessionTabUnread } from '../app/sessionTabsStore.js'
 import { useT } from '../i18n/useT.js'
 import type { Theme } from '../theme.js'
 
@@ -26,9 +26,12 @@ import { useShimmerPhase } from './loaders.js'
  *   running    spinner in the accent color
  *   starting   `…`
  *   unread     `•` plus a still accent glow behind the number (#39428): finished while away
+ *   empty      `…`: a new tab waiting for the picker, or a picked session on its way
+ *   closed     the session ended; selecting the tab resumes it
  *   idle       nothing
  *
- * Click a tab to switch to it; the `+` row opens a new session.
+ * Only the tabs the user opened appear. Click a tab to switch to it, its `×` to take it off the
+ * rail, and "+ new tab" to open another tab and pick its session.
  */
 
 // Keep animating forever while something is busy: the shared clock costs one interval for every
@@ -65,16 +68,20 @@ const fit = (text: string, width: number) => {
 }
 
 function TabRow({
+  closable,
   frame,
   numberWidth,
   onActivate,
+  onClose,
   t,
   tab,
   width
 }: {
+  closable: boolean
   frame: number
   numberWidth: number
   onActivate: () => void
+  onClose: () => void
   t: Theme
   tab: SessionTab
   width: number
@@ -102,12 +109,23 @@ function TabRow({
       ? t.color.accent
       : background
 
-  const titleColor = tab.selected ? t.color.text : attention ? mix(t.color.muted, t.color.warn, 0.5) : t.color.muted
+  const dim = tab.kind === 'closed' || tab.kind === 'empty'
+
+  const titleColor = tab.selected
+    ? dim
+      ? t.color.muted
+      : t.color.text
+    : attention
+      ? mix(t.color.muted, t.color.warn, 0.5)
+      : dim
+        ? mix(t.color.muted, background, 0.35)
+        : t.color.muted
+
   const detailColor = mix(t.color.muted, background, 0.35)
   const glyph = sessionTabGlyph(tab.kind, frame)
   const label = String(tab.number).padStart(numberWidth)
-  // edge (1) + number + glyph (1) + space (1), then the title.
-  const textWidth = Math.max(1, width - numberWidth - 3)
+  // edge (1) + number + glyph (1) + space (1), then the title, then ` ×` (2) when closable.
+  const textWidth = Math.max(1, width - numberWidth - 3 - (closable ? 2 : 0))
   const glow = tab.kind === 'unread' && !tab.selected
 
   const lead = (row: 0 | 1) =>
@@ -124,8 +142,13 @@ function TabRow({
   return (
     <Box
       flexDirection="column"
-      onClick={(event: { stopImmediatePropagation?: () => void }) => {
+      onClick={(event: { localCol?: number; localRow?: number; stopImmediatePropagation?: () => void }) => {
         event.stopImmediatePropagation?.()
+
+        if (closable && event.localRow === 0 && (event.localCol ?? 0) >= width - 2) {
+          return onClose()
+        }
+
         onActivate()
       }}
       width={width}
@@ -144,13 +167,18 @@ function TabRow({
           >
             {fit(row === 0 ? tab.title : tab.model, textWidth)}
           </Text>
+          {closable && (
+            <Text backgroundColor={background} color={row === 0 ? detailColor : background}>
+              {row === 0 ? ' ×' : '  '}
+            </Text>
+          )}
         </Box>
       ))}
     </Box>
   )
 }
 
-// Rows the rail can't use: its header and the "+ new session" row, plus the composer and status
+// Rows the rail can't use: its header and the "+ new tab" row, plus the composer and status
 // bar below the transcript row it sits in.
 const RAIL_RESERVED_ROWS = 9
 
@@ -181,25 +209,32 @@ function useRailFrame(animate: boolean) {
 }
 
 export const SessionTabsRail = memo(function SessionTabsRail({
-  currentSessionId,
+  onClose,
   onNew,
   onSelect,
   t,
   width
 }: {
-  currentSessionId: null | string
+  onClose: (index: number) => void
   onNew: () => void
-  onSelect: (id: string) => void
+  onSelect: (index: number) => void
   t: Theme
   width: number
 }) {
+  const state = useStore($sessionTabs)
   const rows = useStore($sessionTabRows)
   const unread = useStore($sessionTabUnread)
   const copy = useT().session.tabs
 
   const tabs = useMemo(
-    () => buildSessionTabs(rows, currentSessionId, unread, copy.untitled),
-    [rows, currentSessionId, unread, copy.untitled]
+    () =>
+      buildSessionTabs(state, rows, unread, {
+        closed: copy.closed,
+        opening: copy.opening,
+        picking: copy.picking,
+        untitled: copy.untitled
+      }),
+    [state, rows, unread, copy]
   )
 
   const animate = tabs.some(tab => tab.kind === 'attention' || tab.kind === 'running')
@@ -235,17 +270,19 @@ export const SessionTabsRail = memo(function SessionTabsRail({
           </Text>
           <Text backgroundColor={surface} color={waiting ? t.color.warn : t.color.muted}>
             {' '}
-            {waiting ? copy.waiting(waiting) : copy.live(tabs.length)}
+            {waiting ? copy.waiting(waiting) : copy.count(tabs.length)}
           </Text>
         </Box>
         <Box height={1} />
         {marker('up', view.before, view.beforeWaiting)}
         {tabs.slice(view.start, view.end).map(tab => (
-          <Box flexDirection="column" key={tab.id}>
+          <Box flexDirection="column" key={state.slots[tab.index]!.key}>
             <TabRow
+              closable={tabs.length > 1}
               frame={frame}
               numberWidth={numberWidth}
-              onActivate={() => onSelect(tab.id)}
+              onActivate={() => onSelect(tab.index)}
+              onClose={() => onClose(tab.index)}
               t={t}
               tab={tab}
               width={width}
@@ -262,7 +299,7 @@ export const SessionTabsRail = memo(function SessionTabsRail({
           paddingX={1}
         >
           <Text backgroundColor={surface} color={t.color.muted}>
-            {copy.newSession}
+            {copy.newTab}
           </Text>
         </Box>
       </Box>

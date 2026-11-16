@@ -4,14 +4,32 @@ import { atom } from 'nanostores'
 import type { GatewayClient } from '../gatewayClient.js'
 import { asRpcResult } from '../lib/rpc.js'
 
-import { nextUnread } from './sessionTabsModel.js'
+import {
+  bindSession,
+  closeTab,
+  initialTabs,
+  markPending,
+  nextUnread,
+  openTab,
+  pickerClosed,
+  rememberRows,
+  type TabsState
+} from './sessionTabsModel.js'
 
-/** Live-session rows behind the tab rail, refreshed by the 1.5 s live-session poll. */
+/** The tabs the user opened and which one is current. */
+export const $sessionTabs = atom<TabsState>(initialTabs())
+/** Live-session rows behind the tabs' status, refreshed by the 1.5 s live-session poll. */
 export const $sessionTabRows = atom<readonly SessionActiveItem[]>([])
 /** Sessions that finished a turn while another one was on screen. */
 export const $sessionTabUnread = atom<ReadonlySet<string>>(new Set())
 
 let lastStatus = new Map<string, string>()
+
+const setTabs = (next: TabsState) => {
+  if (next !== $sessionTabs.get()) {
+    $sessionTabs.set(next)
+  }
+}
 
 type RosterRow = Omit<SessionActiveItem, 'status'> & { running?: boolean; status?: SessionActiveItem['status'] }
 
@@ -49,6 +67,8 @@ export function applySessionTabsRoster(rows: readonly RosterRow[], current: null
   if (!sameRows(items, $sessionTabRows.get())) {
     $sessionTabRows.set(items)
   }
+
+  setTabs(rememberRows($sessionTabs.get(), items))
 }
 
 /** One poll for the rail. The shared gateway's live `session.list` (the roster the poll already
@@ -78,19 +98,46 @@ export async function refreshSessionTabs(
   }
 }
 
-/** Opening a tab reads it. */
-export function markSessionTabRead(id: string) {
+/** The view switched to `sid`: it fills or focuses a tab, and reading it clears its unread mark. */
+export function noteSessionShown(sid: null | string, storedSid?: null | string) {
+  setTabs(bindSession($sessionTabs.get(), sid, storedSid))
+
   const unread = $sessionTabUnread.get()
 
-  if (unread.has(id)) {
+  if (sid && unread.has(sid)) {
     const next = new Set(unread)
-    next.delete(id)
+    next.delete(sid)
     $sessionTabUnread.set(next)
   }
 }
 
+/** A new session was picked for the current tab; its id arrives with the switch. */
+export const noteSessionPending = () => setTabs(markPending($sessionTabs.get()))
+
+export const openSessionTab = () => setTabs(openTab($sessionTabs.get()))
+
+export const noteSessionPickerClosed = () => setTabs(pickerClosed($sessionTabs.get()))
+
+/** Focus tab `index` without switching sessions (the caller switches). */
+export function focusSessionTab(index: number) {
+  const state = $sessionTabs.get()
+
+  if (index !== state.active && state.slots[index]) {
+    setTabs({ ...state, active: index, returnTo: null })
+  }
+}
+
+/** Take tab `index` off the rail. Returns the tab to switch to, or null when the view stays. */
+export function closeSessionTab(index: number): null | number {
+  const { focus, state } = closeTab($sessionTabs.get(), index)
+  setTabs(state)
+
+  return focus
+}
+
 export function resetSessionTabs() {
   lastStatus = new Map()
+  $sessionTabs.set(initialTabs())
   $sessionTabRows.set([])
   $sessionTabUnread.set(new Set())
 }

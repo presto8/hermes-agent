@@ -100,10 +100,13 @@ export const sessionEn = {
     },
     // Vertical session-tab rail (display.tui_session_tabs).
     tabs: {
-      title: 'Sessions',
-      live: (count: number) => `${count} live`,
+      title: 'Tabs',
+      count: (count: number) => `${count}`,
       waiting: (count: number) => `${count} waiting`,
-      newSession: '+ new session',
+      newTab: '+ new tab',
+      picking: 'pick a session…',
+      opening: 'opening…',
+      closed: 'closed',
       moreAbove: (count: number) => `↑ ${count} more`,
       moreBelow: (count: number) => `↓ ${count} more`,
       untitled: 'untitled'

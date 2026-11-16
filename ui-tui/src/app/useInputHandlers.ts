@@ -37,8 +37,9 @@ import {
 } from './overlayStore.js'
 import { togglePasteSections } from './pasteStore.js'
 import { respondToServerRequest } from './serverRequestStore.js'
+import { selectSessionTab } from './sessionTabsActions.js'
 import { buildSessionTabs, cycleSessionTab, nextAttentionTab, sessionTabKeyAction } from './sessionTabsModel.js'
-import { $sessionTabRows, $sessionTabUnread } from './sessionTabsStore.js'
+import { $sessionTabRows, $sessionTabs, $sessionTabUnread } from './sessionTabsStore.js'
 import { turnController } from './turnController.js'
 import { patchTurnState } from './turnStore.js'
 import { $uiState, getUiState } from './uiStore.js'
@@ -905,17 +906,24 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
     const tabKey = live.sessionTabs ? sessionTabKeyAction(ch, key) : null
 
     if (tabKey) {
-      const tabs = buildSessionTabs($sessionTabRows.get(), live.sid, $sessionTabUnread.get(), '')
+      const tabs = buildSessionTabs($sessionTabs.get(), $sessionTabRows.get(), $sessionTabUnread.get(), {
+        closed: '',
+        opening: '',
+        picking: '',
+        untitled: ''
+      })
 
       const target =
         tabKey.kind === 'select'
-          ? tabs[tabKey.number - 1]?.id
+          ? tabKey.number <= tabs.length
+            ? tabKey.number - 1
+            : null
           : tabKey.kind === 'cycle'
             ? cycleSessionTab(tabs, tabKey.dir)
             : nextAttentionTab(tabs, tabKey.dir)
 
-      if (target && target !== live.sid) {
-        actions.activateLiveSession(target)
+      if (target !== null) {
+        selectSessionTab(target, actions)
       }
 
       return

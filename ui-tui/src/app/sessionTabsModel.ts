@@ -1,9 +1,12 @@
 /**
  * Pure rules for the vertical session-tab rail (`display.tui_session_tabs`).
  *
- * Modeled on OpenCode's TUI session tabs (anomalyco/opencode #39396, #39428, #40072): one tab per
- * live session, a status that tells "needs you" apart from "working" and "finished while you were
- * away", and navigation that jumps straight to the tab that is waiting.
+ * Modeled on OpenCode's TUI session tabs (anomalyco/opencode #39396, #39428, #40072). Tabs are
+ * slots the user fills: whatever session the view switches to (the session picker, `/resume`,
+ * `/new`) takes over the current tab; "+ new tab" opens an empty tab plus the picker to fill it;
+ * closing a tab only takes it off the rail (the session keeps running and stays in the picker).
+ * Each tab shows a status that tells "needs you" apart from "working" and "finished while you
+ * were away".
  *
  * Hermes reports a live session's status as `idle | starting | waiting | working`; `waiting` means
  * an approval, clarify, sudo, secret or vault prompt holds the turn (the same state the terminal
@@ -12,14 +15,160 @@
  */
 import type { SessionActiveItem } from '@hermes/shared/gateway-types'
 
-export type SessionTabKind = 'attention' | 'idle' | 'running' | 'starting' | 'unread'
+/** A tab's session: an id, `null` while the picker is open to fill a new tab, or `PENDING` once a
+ *  pick that has no id yet (a brand-new session) is on its way. */
+export const PENDING = '\u0000pending'
+
+export interface TabSlot {
+  key: number
+  model?: string
+  sessionId: null | string
+  title?: string
+}
+
+export interface TabsState {
+  active: number
+  nextKey: number
+  /** The tab to go back to when the picker opened for a new tab closes without a pick. */
+  returnTo: null | number
+  slots: TabSlot[]
+}
+
+export const initialTabs = (): TabsState => ({
+  active: 0,
+  nextKey: 1,
+  returnTo: null,
+  slots: [{ key: 0, sessionId: null }]
+})
+
+const clampActive = (state: TabsState, active: number): TabsState => ({
+  ...state,
+  active: Math.max(0, Math.min(active, state.slots.length - 1))
+})
+
+const isOpen = (sessionId: null | string): sessionId is string => sessionId !== null && sessionId !== PENDING
+
+const findSlot = (slots: readonly TabSlot[], ids: readonly (null | string | undefined)[]) =>
+  slots.findIndex(slot => isOpen(slot.sessionId) && ids.includes(slot.sessionId))
+
+const dropSlot = (state: TabsState, index: number): TabsState =>
+  clampActive(
+    { ...state, slots: state.slots.filter((_, i) => i !== index) },
+    state.active > index ? state.active - 1 : state.active
+  )
+
+/**
+ * The view now shows session `sid` (`storedSid` is its stored id when that differs). A tab that
+ * already holds it gets focus, and an unfilled tab left over from "+ new tab" closes. Otherwise
+ * the session takes over the current tab.
+ */
+export function bindSession(state: TabsState, sid: null | string, storedSid?: null | string): TabsState {
+  if (!sid) {
+    return state
+  }
+
+  const current = state.slots[state.active]
+  const existing = findSlot(state.slots, [sid, storedSid])
+
+  if (existing === state.active) {
+    return current?.sessionId === sid && state.returnTo === null
+      ? state
+      : {
+          ...state,
+          returnTo: null,
+          slots: state.slots.map((slot, i) => (i === existing ? { ...slot, sessionId: sid } : slot))
+        }
+  }
+
+  if (existing !== -1) {
+    const moved = { ...clampActive(state, existing), returnTo: null }
+
+    return current && !isOpen(current.sessionId) ? dropSlot(moved, state.active) : moved
+  }
+
+  return {
+    ...state,
+    returnTo: null,
+    slots: state.slots.map((slot, i) => (i === state.active ? { key: slot.key, sessionId: sid } : slot))
+  }
+}
+
+/** A pick whose session id isn't known yet (a new session): hold the current tab for it. */
+export const markPending = (state: TabsState): TabsState => ({
+  ...state,
+  slots: state.slots.map((slot, i) => (i === state.active ? { key: slot.key, sessionId: PENDING } : slot))
+})
+
+/** "+ new tab": an empty tab after the last one, focused, waiting for the picker. */
+export function openTab(state: TabsState): TabsState {
+  const slots = [...state.slots, { key: state.nextKey, sessionId: null }]
+
+  return { active: slots.length - 1, nextKey: state.nextKey + 1, returnTo: state.active, slots }
+}
+
+/** The picker closed. A new tab it was opened for that got no pick goes away again. */
+export function pickerClosed(state: TabsState): TabsState {
+  if (state.slots[state.active]?.sessionId !== null || state.slots.length < 2) {
+    return state.returnTo === null ? state : { ...state, returnTo: null }
+  }
+
+  const back = state.returnTo ?? state.active - 1
+  const dropped = dropSlot(state, state.active)
+
+  return { ...clampActive(dropped, back > state.active ? back - 1 : back), returnTo: null }
+}
+
+/** Close tab `index` (never the last one). `focus` is the tab the view should switch to when the
+ *  closed tab was the current one. */
+export function closeTab(state: TabsState, index: number): { focus: null | number; state: TabsState } {
+  if (state.slots.length < 2 || !state.slots[index]) {
+    return { focus: null, state }
+  }
+
+  const wasActive = index === state.active
+  const dropped = dropSlot(state, index)
+
+  const next = {
+    ...clampActive(dropped, wasActive ? Math.min(index, dropped.slots.length - 1) : dropped.active),
+    returnTo: null
+  }
+
+  return { focus: wasActive ? next.active : null, state: next }
+}
+
+export const rowFor = (rows: readonly SessionActiveItem[], sessionId: null | string) =>
+  isOpen(sessionId) ? rows.find(row => row.id === sessionId || row.session_key === sessionId) : undefined
+
+/** Remember each tab session's title and model while it's live, for after it closes. */
+export function rememberRows(state: TabsState, rows: readonly SessionActiveItem[]): TabsState {
+  let changed = false
+
+  const slots = state.slots.map(slot => {
+    const row = rowFor(rows, slot.sessionId)
+    const title = row?.title?.trim() || slot.title
+    const model = row?.model || slot.model
+
+    if (!row || (title === slot.title && model === slot.model)) {
+      return slot
+    }
+
+    changed = true
+
+    return { ...slot, model, title }
+  })
+
+  return changed ? { ...state, slots } : state
+}
+
+export type SessionTabKind = 'attention' | 'closed' | 'empty' | 'idle' | 'running' | 'starting' | 'unread'
 
 export interface SessionTab {
-  id: string
+  index: number
   kind: SessionTabKind
   model: string
   number: number
   selected: boolean
+  sessionId: null | string
   title: string
 }
 
@@ -65,7 +214,11 @@ export function nextUnread(
   return next.size === unread.size && [...next].every(id => unread.has(id)) ? unread : next
 }
 
-export function sessionTabKind(row: SessionActiveItem, unread: boolean): SessionTabKind {
+export function sessionTabKind(row: SessionActiveItem | undefined, unread: boolean): SessionTabKind {
+  if (!row) {
+    return 'closed'
+  }
+
   if (row.status === 'waiting') {
     return 'attention'
   }
@@ -81,42 +234,62 @@ export function sessionTabKind(row: SessionActiveItem, unread: boolean): Session
   return unread ? 'unread' : 'idle'
 }
 
-/** Tabs in a stable order: oldest first, so a new session opens at the bottom and numbers don't
- *  shuffle while you work (OpenCode appends new tabs too). */
-export function buildSessionTabs(
-  rows: readonly SessionActiveItem[],
-  current: null | string,
-  unread: ReadonlySet<string>,
+export interface TabLabels {
+  closed: string
+  opening: string
+  picking: string
   untitled: string
+}
+
+/** The rail's rows: one per tab, in the order the user opened them. */
+export function buildSessionTabs(
+  state: TabsState,
+  rows: readonly SessionActiveItem[],
+  unread: ReadonlySet<string>,
+  labels: TabLabels
 ): SessionTab[] {
-  return [...rows]
-    .map((row, index) => ({ index, row }))
-    .sort((a, b) => (a.row.started_at ?? 0) - (b.row.started_at ?? 0) || a.index - b.index)
-    .map(({ row }, index) => ({
-      id: row.id,
-      kind: sessionTabKind(row, unread.has(row.id) && row.id !== current && !row.current),
-      model: (row.model ?? '').replace(/^.*\//, ''),
-      number: index + 1,
-      selected: row.id === current || !!row.current,
-      title: (row.title || row.preview || '').trim() || untitled
-    }))
+  return state.slots.map((slot, index) => {
+    const selected = index === state.active
+    const base = { index, number: index + 1, selected, sessionId: slot.sessionId }
+
+    if (!isOpen(slot.sessionId)) {
+      return {
+        ...base,
+        kind: 'empty' as const,
+        model: '',
+        title: slot.sessionId === null ? labels.picking : labels.opening
+      }
+    }
+
+    const row = rowFor(rows, slot.sessionId)
+    const model = (row?.model || slot.model || '').replace(/^.*\//, '')
+
+    return {
+      ...base,
+      kind: sessionTabKind(row, !selected && !!row && unread.has(row.id)),
+      model: row ? model : [labels.closed, model].filter(Boolean).join(' · '),
+      title: (row?.title || row?.preview || slot.title || '').trim() || labels.untitled
+    }
+  })
 }
 
 /** The tab `dir` steps from the selected one, wrapping (Alt+↑/↓). */
-export function cycleSessionTab(tabs: readonly SessionTab[], dir: -1 | 1): null | string {
+export function cycleSessionTab(tabs: readonly SessionTab[], dir: -1 | 1): null | number {
   if (tabs.length < 2) {
     return null
   }
 
-  const at = tabs.findIndex(tab => tab.selected)
-  const from = at === -1 ? (dir === 1 ? -1 : 0) : at
+  const at = Math.max(
+    0,
+    tabs.findIndex(tab => tab.selected)
+  )
 
-  return tabs[(from + dir + tabs.length) % tabs.length]!.id
+  return (at + dir + tabs.length) % tabs.length
 }
 
 /** The next tab that wants you, waiting ones first, then unread (Alt+Shift+↑/↓; OpenCode's
  *  `session.tab.next_unread`, which also lands on attention tabs). */
-export function nextAttentionTab(tabs: readonly SessionTab[], dir: -1 | 1): null | string {
+export function nextAttentionTab(tabs: readonly SessionTab[], dir: -1 | 1): null | number {
   const at = Math.max(
     0,
     tabs.findIndex(tab => tab.selected)
@@ -126,10 +299,10 @@ export function nextAttentionTab(tabs: readonly SessionTab[], dir: -1 | 1): null
 
   for (const kind of ['attention', 'unread'] as const) {
     for (let step = 1; step < n; step++) {
-      const tab = tabs[(((at + dir * step) % n) + n) % n]!
+      const index = (((at + dir * step) % n) + n) % n
 
-      if (tab.kind === kind && !tab.selected) {
-        return tab.id
+      if (tabs[index]!.kind === kind) {
+        return index
       }
     }
   }
@@ -140,7 +313,7 @@ export function nextAttentionTab(tabs: readonly SessionTab[], dir: -1 | 1): null
 export const SESSION_TAB_SPINNER = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
 
 /** Status glyph beside the number (OpenCode's `indicators: status`): `?` waiting on you, a spinner
- *  while working, `…` starting, `•` finished unseen, nothing when idle. */
+ *  while working, `…` starting or being filled, `•` finished unseen, nothing when idle or closed. */
 export function sessionTabGlyph(kind: SessionTabKind, frame: number): string {
   switch (kind) {
     case 'attention':
@@ -150,6 +323,8 @@ export function sessionTabGlyph(kind: SessionTabKind, frame: number): string {
       return SESSION_TAB_SPINNER[frame % SESSION_TAB_SPINNER.length]!
 
     case 'starting':
+
+    case 'empty':
       return '…'
 
     case 'unread':
@@ -171,8 +346,8 @@ export const glowAt = (cell: number, reach = 6): number => Math.max(0, 1 - cell 
 
 /** Tab navigation keys (OpenCode's defaults where a terminal can deliver them):
  *  Alt+↑/↓ previous/next tab, Alt+Shift+↑/↓ previous/next tab that wants you, Alt+1..9 tab N.
- *  Option is Alt on macOS when the terminal sends it as Meta (Ghostty: `macos-option-as-alt`). */
-export type SessionTabKeyAction = { kind: 'attention' | 'cycle'; dir: -1 | 1 } | { kind: 'select'; number: number }
+ *  Option is Alt on macOS only when the terminal sends it as Meta (Ghostty: `macos-option-as-alt`). */
+export type SessionTabKeyAction = { dir: -1 | 1; kind: 'attention' | 'cycle' } | { kind: 'select'; number: number }
 
 export function sessionTabKeyAction(
   ch: string,
