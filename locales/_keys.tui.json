@@ -852,6 +852,8 @@
   "session.status.verificationCode",
   "session.status.waitingForInput",
   "session.tabs.live",
+  "session.tabs.moreAbove",
+  "session.tabs.moreBelow",
   "session.tabs.newSession",
   "session.tabs.title",
   "session.tabs.untitled",
