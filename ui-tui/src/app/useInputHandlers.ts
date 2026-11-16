@@ -37,6 +37,7 @@ import {
 } from './overlayStore.js'
 import { togglePasteSections } from './pasteStore.js'
 import { respondToServerRequest } from './serverRequestStore.js'
+import { sessionsEscCloses } from './sessionFilterStore.js'
 import { selectSessionTab } from './sessionTabsActions.js'
 import { buildSessionTabs, cycleSessionTab, nextAttentionTab, sessionTabKeyAction } from './sessionTabsModel.js'
 import { $sessionTabRows, $sessionTabs, $sessionTabUnread } from './sessionTabsStore.js'
@@ -773,7 +774,7 @@ export function useInputHandlers(ctx: InputHandlerContext): InputHandlerResult {
 
       if (isCtrl(key, ch, 'c') || (key.escape && hasSensitivePrompt(overlay))) {
         cancelOverlayFromCtrlC()
-      } else if (key.escape && overlay.sessions) {
+      } else if (sessionsEscCloses(key, overlay)) {
         patchOverlayState({ sessions: false })
       }
 
