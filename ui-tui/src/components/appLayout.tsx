@@ -11,6 +11,7 @@ import { $inputSelection } from '../app/inputSelectionStore.js'
 import type { AppLayoutProps } from '../app/interfaces.js'
 import { $isBlocked, $overlayState, patchOverlayState } from '../app/overlayStore.js'
 import { $petBox } from '../app/petFlashStore.js'
+import { closeSessionTabAt, newSessionTab, selectSessionTab, wrapPickerForTabs } from '../app/sessionTabsActions.js'
 import { sessionTabsRailWidth } from '../app/sessionTabsModel.js'
 import { $uiState } from '../app/uiStore.js'
 import { usePet } from '../app/usePet.js'
@@ -429,7 +430,7 @@ const ComposerPane = memo(function ComposerPane({
 
   const endInputDrag = () => inputMouseRef.current?.end()
 
-  const floatingOverlayProps = {
+  const pickerProps = {
     cols: composer.cols,
     compIdx: composer.compIdx,
     completions: composer.completions,
@@ -441,6 +442,8 @@ const ComposerPane = memo(function ComposerPane({
     onResumeSelect: actions.resumeById,
     pagerPageSize: composer.pagerPageSize
   }
+
+  const floatingOverlayProps = ui.sessionTabs ? wrapPickerForTabs(pickerProps) : pickerProps
 
   return (
     <NoSelect
@@ -672,9 +675,9 @@ export const AppLayout = memo(function AppLayout({
         <Box flexDirection="row" flexGrow={1}>
           {tabsWidth ? (
             <SessionTabsRail
-              currentSessionId={ui.sid}
-              onNew={actions.newLiveSession}
-              onSelect={id => id !== ui.sid && actions.activateLiveSession(id)}
+              onClose={index => closeSessionTabAt(index, actions)}
+              onNew={newSessionTab}
+              onSelect={index => selectSessionTab(index, actions)}
               t={ui.theme}
               width={tabsWidth}
             />

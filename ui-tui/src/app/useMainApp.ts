@@ -64,7 +64,7 @@ import { applyProcessSnapshot, type ProcessEntry } from './processRoster.js'
 import { scrollWithSelectionBy } from './scroll.js'
 import { respondToServerRequest } from './serverRequestStore.js'
 import { sessionTabsRailWidth } from './sessionTabsModel.js'
-import { refreshSessionTabs } from './sessionTabsStore.js'
+import { noteSessionPickerClosed, noteSessionShown, refreshSessionTabs } from './sessionTabsStore.js'
 import { mutateCanonicalSession } from './slash/canonicalSessionControls.js'
 import { setSlashCatalog, useSlashCatalog } from './slashCatalog.js'
 import { captureDestination, isCurrentDestination, type SubmissionDestination } from './submissionDestination.js'
@@ -789,6 +789,22 @@ export function useMainApp(gw: GatewayClient) {
     }
   }, [gw, sys, ui.sid, ui.gatewayConnected])
 
+  // Session tabs: whatever session the view shows (picker, /resume, /new, startup) fills the current
+  // tab, and a picker closed without a pick drops the empty tab it was opened for.
+  useEffect(() => {
+    if (ui.sessionTabs) {
+      noteSessionShown(ui.sid, ui.storedSid)
+    }
+  }, [ui.sessionTabs, ui.sid, ui.storedSid])
+
+  const pickerOpen = overlay.sessions
+
+  useEffect(() => {
+    if (ui.sessionTabs && !pickerOpen) {
+      noteSessionPickerClosed()
+    }
+  }, [pickerOpen, ui.sessionTabs])
+
   // Tab title: `⚠` waiting on approval/sudo/secret/clarify, `⏳` busy, `✓` idle.
   // Format: `<marker> <session name> · <model> · <cwd>` — name/cwd omitted when absent.
   const model = ui.info?.model?.replace(/^.*\//, '') ?? ''
@@ -1023,6 +1039,7 @@ export function useMainApp(gw: GatewayClient) {
     actions: {
       activateLiveSession: session.activateLiveSession,
       appendMessage,
+      resumeById: id => void session.resumeById(id),
       cancelClarify,
       countPrompts: () => historyItemsRef.current.filter(msg => msg.role === 'user' && !msg.kind).length,
       die,
