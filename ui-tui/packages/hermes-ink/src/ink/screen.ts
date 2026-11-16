@@ -1140,14 +1140,30 @@ export function clearRegion(
 }
 
 /**
- * Shift full-width rows within [top, bottom] (inclusive, 0-indexed) by n.
+ * Shift rows within [top, bottom] (inclusive, 0-indexed) by n.
  * n > 0 shifts UP (simulating CSI n S); n < 0 shifts DOWN (CSI n T).
  * Vacated rows are cleared. Does NOT update damage. Both cells and the
  * noSelect bitmap are shifted so text-selection markers stay aligned when
  * this is applied to next.screen during scroll fast path.
+ *
+ * `x`/`width` limit the shift to a column band (a scroll box beside a side
+ * panel); cells outside it stay put. Without them whole rows move.
  */
-export function shiftRows(screen: Screen, top: number, bottom: number, n: number): void {
+export function shiftRows(screen: Screen, top: number, bottom: number, n: number, x = 0, width = screen.width): void {
   if (n === 0 || top < 0 || bottom >= screen.height || top > bottom) {
+    return
+  }
+
+  const x1 = Math.max(0, x)
+  const x2 = Math.min(screen.width, x + width)
+
+  if (x1 >= x2) {
+    return
+  }
+
+  if (x1 > 0 || x2 < screen.width) {
+    shiftBand(screen, top, bottom, n, x1, x2)
+
     return
   }
 
@@ -1187,6 +1203,52 @@ export function shiftRows(screen: Screen, top: number, bottom: number, n: number
     noSel.fill(0, top * w, (top - n) * w)
     written.fill(0, top * w, (top - n) * w)
     sw.fill(0, top, top - n)
+  }
+}
+
+/** shiftRows for the column band [x1, x2): each row's slice moves on its own. Soft-wrap markers are
+ *  per row and describe the full-width line, so they stay where they are. */
+function shiftBand(screen: Screen, top: number, bottom: number, n: number, x1: number, x2: number): void {
+  const w = screen.width
+  const { cells64, noSelect, written } = screen
+  const absN = Math.abs(n)
+
+  const clearRow = (row: number) => {
+    cells64.fill(EMPTY_CELL_VALUE, row * w + x1, row * w + x2)
+    noSelect.fill(0, row * w + x1, row * w + x2)
+    written.fill(0, row * w + x1, row * w + x2)
+  }
+
+  const copyRow = (from: number, to: number) => {
+    cells64.copyWithin(to * w + x1, from * w + x1, from * w + x2)
+    noSelect.copyWithin(to * w + x1, from * w + x1, from * w + x2)
+    written.copyWithin(to * w + x1, from * w + x1, from * w + x2)
+  }
+
+  if (absN > bottom - top) {
+    for (let row = top; row <= bottom; row++) {
+      clearRow(row)
+    }
+
+    return
+  }
+
+  if (n > 0) {
+    for (let row = top; row <= bottom - n; row++) {
+      copyRow(row + n, row)
+    }
+
+    for (let row = bottom - n + 1; row <= bottom; row++) {
+      clearRow(row)
+    }
+  } else {
+    for (let row = bottom; row >= top + absN; row--) {
+      copyRow(row - absN, row)
+    }
+
+    for (let row = top; row < top + absN; row++) {
+      clearRow(row)
+    }
   }
 }
 

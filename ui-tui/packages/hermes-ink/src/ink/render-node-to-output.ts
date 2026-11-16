@@ -1165,9 +1165,13 @@ function renderNodeToOutput(
 
             // Keep the terminal hint aligned with the same bounded rows used
             // to construct next.screen. Valid in-bounds hints are unchanged.
-            scrollHint = { bottom: bottomInclusive, delta, top }
+            // DECSTBM scrolls whole terminal rows, so it is only a hint when
+            // the scroll box spans the full width; beside a side panel the
+            // panel's cells would scroll too. The diff writes those rows then.
+            const fullWidth = repairX === 0 && repairWidth === outputWidth
+            scrollHint = fullWidth ? { bottom: bottomInclusive, delta, top } : null
             output.blit(prevScreen, repairX, top, repairWidth, bottom - top)
-            output.shift(top, bottomInclusive, delta)
+            output.shift(top, bottomInclusive, delta, repairX, repairWidth)
             // Edge rows: new content entering the viewport.
             const edgeTop = Math.max(top, delta > 0 ? bottom - delta : top)
             const edgeBottom = Math.min(bottom, delta > 0 ? bottom : top - delta)
