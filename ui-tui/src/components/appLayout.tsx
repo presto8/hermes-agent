@@ -653,7 +653,7 @@ export const AppLayout = memo(function AppLayout({
   const ui = useStore($uiState)
   const tabsWidth = ui.sessionTabs && !overlay.agents && !overlay.journey ? sessionTabsRailWidth(composer.cols) : 0
 
-  const transcriptComposer = useMemo(
+  const paneComposer = useMemo(
     () => (tabsWidth ? { ...composer, cols: composer.cols - tabsWidth } : composer),
     [composer, tabsWidth]
   )
@@ -682,63 +682,69 @@ export const AppLayout = memo(function AppLayout({
               width={tabsWidth}
             />
           ) : null}
-          {!overlay.agents && !overlay.journey && <AmbientRail side="left" />}
-          {overlay.agents ? (
-            <PerfPane id="agents">
-              <AgentsOverlayPane />
-            </PerfPane>
-          ) : overlay.journey ? (
-            <PerfPane id="journey">
-              <JourneyPane />
-            </PerfPane>
-          ) : (
-            <PerfPane id="transcript">
-              <TranscriptPane
-                actions={actions}
-                composer={transcriptComposer}
-                nativeMode={NATIVE_MODE}
-                progress={progress}
-                transcript={transcript}
-              />
-            </PerfPane>
-          )}
-          {!overlay.agents && !overlay.journey && <AmbientRail side="right" />}
-        </Box>
+          {/* The rail runs the full height (OpenCode's layout); transcript, prompts and composer share
+              the column beside it, so the input lines up with the transcript instead of the rail. */}
+          <Box flexDirection="column" flexGrow={1} flexShrink={1} minWidth={0}>
+            <Box flexDirection="row" flexGrow={1}>
+              {!overlay.agents && !overlay.journey && <AmbientRail side="left" />}
+              {overlay.agents ? (
+                <PerfPane id="agents">
+                  <AgentsOverlayPane />
+                </PerfPane>
+              ) : overlay.journey ? (
+                <PerfPane id="journey">
+                  <JourneyPane />
+                </PerfPane>
+              ) : (
+                <PerfPane id="transcript">
+                  <TranscriptPane
+                    actions={actions}
+                    composer={paneComposer}
+                    nativeMode={NATIVE_MODE}
+                    progress={progress}
+                    transcript={transcript}
+                  />
+                </PerfPane>
+              )}
+              {!overlay.agents && !overlay.journey && <AmbientRail side="right" />}
+            </Box>
 
-        {!overlay.agents && !overlay.journey && (
-          <>
-            <PerfPane id="prompt">
-              <PromptZone
-                cols={composer.cols}
-                onApprovalChoice={actions.answerApproval}
-                onApprovalTell={actions.answerApprovalTell}
-                onClarifyCancel={actions.cancelClarify}
-                onClarifyQuestionAnswer={actions.answerClarifyQuestion}
-                onSecretSubmit={actions.answerSecret}
-                onSudoSubmit={actions.answerSudo}
-                onVaultCodeSubmit={actions.answerVaultCode}
-                onVaultSaveLoginSubmit={actions.answerVaultSaveLogin}
-                onVaultUnlockSubmit={actions.answerVaultUnlock}
-              />
-            </PerfPane>
+            {!overlay.agents && !overlay.journey && (
+              <>
+                <PerfPane id="prompt">
+                  <PromptZone
+                    cols={paneComposer.cols}
+                    onApprovalChoice={actions.answerApproval}
+                    onApprovalTell={actions.answerApprovalTell}
+                    onClarifyCancel={actions.cancelClarify}
+                    onClarifyQuestionAnswer={actions.answerClarifyQuestion}
+                    onSecretSubmit={actions.answerSecret}
+                    onSudoSubmit={actions.answerSudo}
+                    onVaultCodeSubmit={actions.answerVaultCode}
+                    onVaultSaveLoginSubmit={actions.answerVaultSaveLogin}
+                    onVaultUnlockSubmit={actions.answerVaultUnlock}
+                  />
+                </PerfPane>
 
-            <PerfPane id="composer">
-              <ComposerPane
-                actions={actions}
-                composer={composer}
-                cursorSnapshotRef={cursorSnapshotRef}
-                nativeMode={NATIVE_MODE}
-                status={status}
-              />
-            </PerfPane>
+                <PerfPane id="composer">
+                  <ComposerPane
+                    actions={actions}
+                    composer={paneComposer}
+                    cursorSnapshotRef={cursorSnapshotRef}
+                    nativeMode={NATIVE_MODE}
+                    status={status}
+                  />
+                </PerfPane>
 
-            {SHOW_FPS && (
-              <Box flexShrink={0} justifyContent="flex-end" paddingRight={1}>
-                <FpsOverlay t={ui.theme} />
-              </Box>
+                {SHOW_FPS && (
+                  <Box flexShrink={0} justifyContent="flex-end" paddingRight={1}>
+                    <FpsOverlay t={ui.theme} />
+                  </Box>
+                )}
+              </>
             )}
-          </>
-        )}
+          </Box>
+        </Box>
 
         {!overlay.agents && !NATIVE_MODE && <PetPane />}
       </Box>

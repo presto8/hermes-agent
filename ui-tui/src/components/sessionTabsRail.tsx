@@ -178,9 +178,9 @@ function TabRow({
   )
 }
 
-// Rows the rail can't use: its header and the "+ new tab" row, plus the composer and status
-// bar below the transcript row it sits in.
-const RAIL_RESERVED_ROWS = 9
+// Rows the rail can't use for tabs: its header, the gap under it and the "+ new tab" row. The rail
+// runs the full height beside the transcript and composer.
+const RAIL_RESERVED_ROWS = 4
 
 function useTerminalRows() {
   const { stdout } = useStdout()
