@@ -15,7 +15,8 @@ import {
   nextUnread,
   sessionTabGlyph,
   sessionTabKeyAction,
-  sessionTabsRailWidth
+  sessionTabsRailWidth,
+  sessionTabWindow
 } from '../app/sessionTabsModel.js'
 import {
   $sessionTabRows,
@@ -28,7 +29,11 @@ import {
 import { SessionTabsRail } from '../components/sessionTabsRail.js'
 import { DEFAULT_THEME } from '../theme.js'
 
-const row = (id: string, status: SessionActiveItem['status'], extra: Partial<SessionActiveItem> = {}): SessionActiveItem => ({
+const row = (
+  id: string,
+  status: SessionActiveItem['status'],
+  extra: Partial<SessionActiveItem> = {}
+): SessionActiveItem => ({
   id,
   model: 'anthropic/claude-opus',
   started_at: Number(id.replace(/\D/g, '')) || 0,
@@ -130,6 +135,23 @@ describe('session tab model', () => {
     expect(sessionTabsRailWidth(80)).toBe(20)
     expect(sessionTabsRailWidth(120)).toBe(26)
     expect(sessionTabsRailWidth(300)).toBe(30)
+  })
+
+  it('windows the tabs around the selected one and counts hidden waiting tabs', () => {
+    const rows = Array.from({ length: 12 }, (_, i) => row(`s${i + 1}`, i === 0 || i === 11 ? 'waiting' : 'idle'))
+    const pick = (sid: string) => buildSessionTabs(rows, sid, new Set(), 'x')
+
+    expect(sessionTabWindow(pick('s1'), 100)).toMatchObject({ after: 0, before: 0, end: 12, start: 0 })
+
+    // 14 rows: markers take 2, so 4 tabs of 3 rows fit.
+    const top = sessionTabWindow(pick('s2'), 14)
+    expect(top).toMatchObject({ after: 8, afterWaiting: 1, before: 0, end: 4, start: 0 })
+
+    const bottom = sessionTabWindow(pick('s10'), 14, top.start)
+    expect(bottom).toMatchObject({ before: 6, beforeWaiting: 1, end: 10, start: 6 })
+
+    // Moving within the window keeps it still.
+    expect(sessionTabWindow(pick('s8'), 14, bottom.start).start).toBe(6)
   })
 
   it('draws a glyph per state and a bounded breathing level', () => {

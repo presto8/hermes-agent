@@ -1,9 +1,16 @@
-import { Box, NoSelect, stringWidth, Text } from '@hermes/ink'
+import { Box, NoSelect, stringWidth, Text, useStdout } from '@hermes/ink'
 import { mix } from '@hermes/shared/color'
 import { useStore } from '@nanostores/react'
-import { memo, useMemo } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 
-import { breatheLevel, buildSessionTabs, glowAt, type SessionTab, sessionTabGlyph } from '../app/sessionTabsModel.js'
+import {
+  breatheLevel,
+  buildSessionTabs,
+  glowAt,
+  type SessionTab,
+  sessionTabGlyph,
+  sessionTabWindow
+} from '../app/sessionTabsModel.js'
 import { $sessionTabRows, $sessionTabUnread } from '../app/sessionTabsStore.js'
 import { useT } from '../i18n/useT.js'
 import type { Theme } from '../theme.js'
@@ -73,6 +80,7 @@ function TabRow({
   width: number
 }) {
   const surface = t.color.completionBg
+
   const background = tab.selected ? t.color.completionCurrentBg : surface
   const attention = tab.kind === 'attention'
   const breathe = attention ? breatheLevel(frame) : 0
@@ -142,6 +150,30 @@ function TabRow({
   )
 }
 
+// Rows the rail can't use: its header and the "+ new session" row, plus the composer and status
+// bar below the transcript row it sits in.
+const RAIL_RESERVED_ROWS = 9
+
+function useTerminalRows() {
+  const { stdout } = useStdout()
+  const [rows, setRows] = useState(stdout?.rows ?? 24)
+
+  useEffect(() => {
+    if (!stdout) {
+      return
+    }
+
+    const onResize = () => setRows(stdout.rows ?? 24)
+    stdout.on('resize', onResize)
+
+    return () => {
+      stdout.off('resize', onResize)
+    }
+  }, [stdout])
+
+  return rows
+}
+
 function useRailFrame(animate: boolean) {
   const phase = useShimmerPhase(animate ? FOREVER : 0)
 
@@ -175,6 +207,24 @@ export const SessionTabsRail = memo(function SessionTabsRail({
   const numberWidth = Math.max(1, String(tabs.length).length)
   const waiting = tabs.filter(tab => tab.kind === 'attention').length
   const surface = t.color.completionBg
+  const startRef = useRef(0)
+  const view = sessionTabWindow(tabs, Math.max(3, useTerminalRows() - RAIL_RESERVED_ROWS), startRef.current)
+  startRef.current = view.start
+
+  const marker = (dir: 'down' | 'up', count: number, waitingCount: number) =>
+    count > 0 ? (
+      <Box paddingX={1} width={width}>
+        <Text backgroundColor={surface} color={t.color.muted}>
+          {dir === 'up' ? copy.moreAbove(count) : copy.moreBelow(count)}
+        </Text>
+        {waitingCount > 0 && (
+          <Text backgroundColor={surface} color={t.color.warn}>
+            {' · '}
+            {copy.waiting(waitingCount)}
+          </Text>
+        )}
+      </Box>
+    ) : null
 
   return (
     <NoSelect flexDirection="column" flexShrink={0} width={width}>
@@ -189,7 +239,8 @@ export const SessionTabsRail = memo(function SessionTabsRail({
           </Text>
         </Box>
         <Box height={1} />
-        {tabs.map(tab => (
+        {marker('up', view.before, view.beforeWaiting)}
+        {tabs.slice(view.start, view.end).map(tab => (
           <Box flexDirection="column" key={tab.id}>
             <TabRow
               frame={frame}
@@ -202,6 +253,7 @@ export const SessionTabsRail = memo(function SessionTabsRail({
             <Box height={1} />
           </Box>
         ))}
+        {marker('down', view.after, view.afterWaiting)}
         <Box
           onClick={(event: { stopImmediatePropagation?: () => void }) => {
             event.stopImmediatePropagation?.()

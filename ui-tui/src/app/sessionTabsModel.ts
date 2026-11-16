@@ -188,3 +188,55 @@ export function sessionTabKeyAction(
 
   return /^[1-9]$/.test(ch) && !key.shift ? { kind: 'select', number: Number(ch) } : null
 }
+
+/** Rows one tab takes: title, detail, gap. */
+export const SESSION_TAB_ROWS = 3
+
+export interface SessionTabWindow {
+  after: number
+  afterWaiting: number
+  before: number
+  beforeWaiting: number
+  end: number
+  start: number
+}
+
+/**
+ * The slice of tabs that fits `rows` rows, kept around the selected tab (OpenCode's rail scrolls
+ * with active-tab tracking). The window moves only when the selected tab would leave it, so it
+ * doesn't jump on every switch. Overflow markers take a row each and say how many hidden tabs
+ * are waiting on you.
+ */
+export function sessionTabWindow(tabs: readonly SessionTab[], rows: number, previousStart = 0): SessionTabWindow {
+  const fit = (room: number) => Math.max(1, Math.floor(room / SESSION_TAB_ROWS))
+
+  const selected = Math.max(
+    0,
+    tabs.findIndex(tab => tab.selected)
+  )
+
+  let count = Math.min(tabs.length, fit(rows))
+
+  if (count < tabs.length) {
+    count = Math.min(tabs.length, fit(rows - 2))
+  }
+
+  let start = Math.min(Math.max(0, previousStart), Math.max(0, tabs.length - count))
+
+  if (selected < start) {
+    start = selected
+  } else if (selected >= start + count) {
+    start = selected - count + 1
+  }
+
+  const waiting = (from: number, to: number) => tabs.slice(from, to).filter(tab => tab.kind === 'attention').length
+
+  return {
+    after: tabs.length - start - count,
+    afterWaiting: waiting(start + count, tabs.length),
+    before: start,
+    beforeWaiting: waiting(0, start),
+    end: start + count,
+    start
+  }
+}

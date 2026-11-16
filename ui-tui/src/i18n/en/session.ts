@@ -104,6 +104,8 @@ export const sessionEn = {
       live: (count: number) => `${count} live`,
       waiting: (count: number) => `${count} waiting`,
       newSession: '+ new session',
+      moreAbove: (count: number) => `↑ ${count} more`,
+      moreBelow: (count: number) => `↓ ${count} more`,
       untitled: 'untitled'
     }
   }
