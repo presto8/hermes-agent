@@ -3,6 +3,7 @@ import { PENDING, rowFor } from './sessionTabsModel.js'
 import {
   $sessionTabRows,
   $sessionTabs,
+  abandonSessionTab,
   closeSessionTab,
   focusSessionTab,
   noteSessionPending,
@@ -14,6 +15,11 @@ import { getUiState } from './uiStore.js'
 export interface SessionTabActions {
   activateLiveSession: (id: string) => void
   resumeById: (id: string) => void
+}
+
+export interface NewSessionTabActions {
+  /** Start a live session beside the current one; resolves to its id, or null when it didn't start. */
+  newLiveSession: () => Promise<null | string> | null | string | void
 }
 
 const openPicker = () => patchOverlayState({ sessions: true })
@@ -44,10 +50,20 @@ export function selectSessionTab(index: number, actions: SessionTabActions) {
   return row ? actions.activateLiveSession(row.id) : actions.resumeById(slot.sessionId)
 }
 
-/** "+ new tab": an empty tab and the picker to fill it. */
-export function newSessionTab() {
-  openSessionTab()
-  openPicker()
+/** "+ new tab": a tab holding a brand-new live session, started right away (the picker's Ctrl+N);
+ *  the session that was on screen keeps running in its own tab. A start that fails or is
+ *  overtaken takes the tab off the rail again. */
+export function newSessionTab(actions: NewSessionTabActions) {
+  const key = openSessionTab()
+  noteSessionPending()
+
+  void new Promise<null | string | void>(resolve => resolve(actions.newLiveSession()))
+    .catch(() => null)
+    .then(sid => {
+      if (!sid) {
+        abandonSessionTab(key)
+      }
+    })
 }
 
 /** Take tab `index` off the rail; when it was the current tab, show its neighbour. */

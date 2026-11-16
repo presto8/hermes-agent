@@ -3,7 +3,7 @@
  *
  * Modeled on OpenCode's TUI session tabs (anomalyco/opencode #39396, #39428, #40072). Tabs are
  * slots the user fills: whatever session the view switches to (the session picker, `/resume`,
- * `/new`) takes over the current tab; "+ new tab" opens an empty tab plus the picker to fill it;
+ * `/new`) takes over the current tab; "+ new tab" opens a tab with a new live session in it;
  * closing a tab only takes it off the rail (the session keeps running and stays in the picker).
  * Each tab shows a status that tells "needs you" apart from "working" and "finished while you
  * were away".
@@ -99,11 +99,30 @@ export const markPending = (state: TabsState): TabsState => ({
   slots: state.slots.map((slot, i) => (i === state.active ? { key: slot.key, sessionId: PENDING } : slot))
 })
 
-/** "+ new tab": an empty tab after the last one, focused, waiting for the picker. */
+/** An empty tab after the last one, focused: "+ new tab" fills it with a new session. */
 export function openTab(state: TabsState): TabsState {
   const slots = [...state.slots, { key: state.nextKey, sessionId: null }]
 
   return { active: slots.length - 1, nextKey: state.nextKey + 1, returnTo: state.active, slots }
+}
+
+/** The new session meant for tab `key` never arrived. A tab still waiting for it goes away, and
+ *  focus goes back to where "+ new tab" was clicked when that tab was current. */
+export function abandonTab(state: TabsState, key: number): TabsState {
+  const index = state.slots.findIndex(slot => slot.key === key)
+
+  if (index === -1 || state.slots[index]!.sessionId !== PENDING || state.slots.length < 2) {
+    return state
+  }
+
+  if (index !== state.active) {
+    return dropSlot(state, index)
+  }
+
+  const back = state.returnTo ?? index - 1
+  const dropped = dropSlot(state, index)
+
+  return { ...clampActive(dropped, back > index ? back - 1 : back), returnTo: null }
 }
 
 /** The picker closed. A new tab it was opened for that got no pick goes away again. */

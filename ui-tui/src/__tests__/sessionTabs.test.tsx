@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { $overlayState, patchOverlayState } from '../app/overlayStore.js'
 import { closeSessionTabAt, newSessionTab, selectSessionTab, wrapPickerForTabs } from '../app/sessionTabsActions.js'
 import {
+  abandonTab,
   bindSession,
   breatheLevel,
   buildSessionTabs,
@@ -35,6 +36,7 @@ import {
   applySessionTabsRoster,
   noteSessionPickerClosed,
   noteSessionShown,
+  openSessionTab,
   refreshSessionTabs,
   resetSessionTabs
 } from '../app/sessionTabsStore.js'
@@ -97,6 +99,19 @@ describe('tab slots', () => {
     expect(ids(back)).toEqual(['s1', 's2'])
     expect(back.active).toBe(0)
     expect(pickerClosed(tabsOf(['s1']))).toEqual(tabsOf(['s1']))
+  })
+
+  it('abandons a tab whose new session never arrived, back to where it came from', () => {
+    const pending = markPending(openTab(tabsOf(['s1', 's2'], 0)))
+    const back = abandonTab(pending, pending.slots[2]!.key)
+
+    expect(ids(back)).toEqual(['s1', 's2'])
+    expect(back.active).toBe(0)
+    // A tab its session already filled, or the last tab, stays.
+    const filled = bindSession(pending, 's3')
+    expect(abandonTab(filled, filled.slots[2]!.key)).toBe(filled)
+    const only = markPending(initialTabs())
+    expect(abandonTab(only, only.slots[0]!.key)).toBe(only)
   })
 
   it('keeps a tab held for a new session through the picker closing', () => {
@@ -252,11 +267,49 @@ describe('tab store and actions', () => {
     actions.resumeById.mockReset()
   })
 
-  it('"+ new tab" opens the picker; a pick fills the tab; cancelling drops it', () => {
+  it('"+ new tab" starts a new session in a new tab right away, without the picker', async () => {
     noteSessionShown('s1')
-    newSessionTab()
-    expect($overlayState.get().sessions).toBe(true)
-    expect(ids($sessionTabs.get())).toEqual(['s1', null])
+
+    let started: (sid: null | string) => void = () => {}
+    const newLiveSession = vi.fn(() => new Promise<null | string>(resolve => (started = resolve)))
+
+    newSessionTab({ newLiveSession })
+    expect(newLiveSession).toHaveBeenCalledOnce()
+    expect($overlayState.get().sessions).toBe(false)
+    expect(ids($sessionTabs.get())).toEqual(['s1', PENDING])
+    expect($sessionTabs.get().active).toBe(1)
+
+    // The new session's id arrives with the switch, and the picker closing doesn't drop the tab.
+    noteSessionPickerClosed()
+    noteSessionShown('s2')
+    started('s2')
+    await Promise.resolve()
+    expect(ids($sessionTabs.get())).toEqual(['s1', 's2'])
+    expect($sessionTabs.get().active).toBe(1)
+  })
+
+  it('"+ new tab" takes its tab back off the rail when the session does not start', async () => {
+    noteSessionShown('s1')
+    newSessionTab({ newLiveSession: async () => null })
+    expect(ids($sessionTabs.get())).toEqual(['s1', PENDING])
+
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(ids($sessionTabs.get())).toEqual(['s1'])
+    expect($sessionTabs.get().active).toBe(0)
+
+    newSessionTab({
+      newLiveSession: () => {
+        throw new Error('boom')
+      }
+    })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(ids($sessionTabs.get())).toEqual(['s1'])
+  })
+
+  it('a pick from the picker fills an empty tab; closing the picker without one drops it', () => {
+    noteSessionShown('s1')
+    openSessionTab()
+    patchOverlayState({ sessions: true })
 
     const picker = wrapPickerForTabs({
       onActiveSessionSelect: actions.activateLiveSession,
@@ -269,14 +322,14 @@ describe('tab store and actions', () => {
     expect(actions.activateLiveSession).toHaveBeenCalledWith('s2')
     expect(ids($sessionTabs.get())).toEqual(['s1', 's2'])
 
-    newSessionTab()
+    openSessionTab()
     noteSessionPickerClosed()
     expect(ids($sessionTabs.get())).toEqual(['s1', 's2'])
   })
 
   it('selecting a tab activates a live session, resumes a closed one, re-opens the picker for an empty one', () => {
     noteSessionShown('s1')
-    newSessionTab()
+    openSessionTab()
     noteSessionShown('s2')
     patchUiState({ sid: 's2' })
     applySessionTabsRoster([row('s2', 'idle')], 's2')
@@ -288,7 +341,7 @@ describe('tab store and actions', () => {
     selectSessionTab(0, actions)
     expect(actions.activateLiveSession).toHaveBeenCalledWith('s1')
 
-    newSessionTab()
+    openSessionTab()
     patchOverlayState({ sessions: false })
     selectSessionTab(2, actions)
     expect($overlayState.get().sessions).toBe(true)
@@ -296,7 +349,7 @@ describe('tab store and actions', () => {
 
   it('closing the current tab shows its neighbour', () => {
     noteSessionShown('s1')
-    newSessionTab()
+    openSessionTab()
     noteSessionShown('s2')
     patchUiState({ sid: 's2' })
     applySessionTabsRoster([row('s1', 'idle'), row('s2', 'idle')], 's2')
@@ -355,7 +408,7 @@ describe('tab rail', () => {
 
   it('shows only the opened tabs, with the waiting marker in the warning color', () => {
     noteSessionShown('s1')
-    newSessionTab()
+    openSessionTab()
     noteSessionShown('s2')
     applySessionTabsRoster([row('s1', 'idle'), row('s2', 'waiting'), row('s3', 'working'), row('s4', 'idle')], 's1')
 

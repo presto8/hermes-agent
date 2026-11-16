@@ -670,7 +670,7 @@ export interface AppLayoutActions {
   clearSelection: () => void
   activateLiveSession: (id: string) => void
   closeLiveSession: (id: string) => Promise<null | SessionCloseResponse>
-  newLiveSession: () => void
+  newLiveSession: () => Promise<null | string> | null | string | void
   newPromptSession: (prompt: string, modelArg?: string) => void
   onModelSelect: (value: string) => void
   resumeById: (id: string) => void

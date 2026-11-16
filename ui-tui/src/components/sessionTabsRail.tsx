@@ -26,12 +26,12 @@ import { useShimmerPhase } from './loaders.js'
  *   running    spinner in the accent color
  *   starting   `…`
  *   unread     `•` plus a still accent glow behind the number (#39428): finished while away
- *   empty      `…`: a new tab waiting for the picker, or a picked session on its way
+ *   empty      `…`: a new session on its way, or an empty tab waiting for the picker
  *   closed     the session ended; selecting the tab resumes it
  *   idle       nothing
  *
  * Only the tabs the user opened appear. Click a tab to switch to it, its `×` to take it off the
- * rail, and "+ new tab" to open another tab and pick its session.
+ * rail, and "+ new tab" to start a new session in another tab (the picker's Ctrl+N).
  */
 
 // Keep animating forever while something is busy: the shared clock costs one interval for every

@@ -676,7 +676,7 @@ export const AppLayout = memo(function AppLayout({
           {tabsWidth ? (
             <SessionTabsRail
               onClose={index => closeSessionTabAt(index, actions)}
-              onNew={newSessionTab}
+              onNew={() => newSessionTab(actions)}
               onSelect={index => selectSessionTab(index, actions)}
               t={ui.theme}
               width={tabsWidth}

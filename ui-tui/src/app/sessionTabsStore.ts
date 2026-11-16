@@ -5,6 +5,7 @@ import type { GatewayClient } from '../gatewayClient.js'
 import { asRpcResult } from '../lib/rpc.js'
 
 import {
+  abandonTab,
   bindSession,
   closeTab,
   initialTabs,
@@ -114,7 +115,16 @@ export function noteSessionShown(sid: null | string, storedSid?: null | string) 
 /** A new session was picked for the current tab; its id arrives with the switch. */
 export const noteSessionPending = () => setTabs(markPending($sessionTabs.get()))
 
-export const openSessionTab = () => setTabs(openTab($sessionTabs.get()))
+/** Open an empty tab after the last one and focus it. Returns its key. */
+export function openSessionTab(): number {
+  const next = openTab($sessionTabs.get())
+  setTabs(next)
+
+  return next.slots[next.active]!.key
+}
+
+/** A new session meant for tab `key` didn't start: drop the tab if it is still waiting. */
+export const abandonSessionTab = (key: number) => setTabs(abandonTab($sessionTabs.get(), key))
 
 export const noteSessionPickerClosed = () => setTabs(pickerClosed($sessionTabs.get()))
 
