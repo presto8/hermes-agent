@@ -30,6 +30,7 @@ const buildUiState = (): UiState => ({
   pasteCollapseLines: 5,
   pasteCollapseChars: 2000,
   sections: {},
+  sessionTabs: false,
   sessionTitle: '',
   showReasoning: false,
   sid: null,

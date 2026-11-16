@@ -171,6 +171,8 @@ export interface ConfigDisplayConfig {
   tui_agents_nudge?: boolean
   tui_auto_resume_recent?: boolean
   tui_compact?: boolean
+  /** Vertical session-tab rail beside the transcript (status per live session). Default false. */
+  tui_session_tabs?: boolean
   /** Shade bar behind the user's own prompts in the transcript. Default false. */
   tui_user_message_shade?: boolean
   /** Legacy alias for display.mouse_tracking. */
